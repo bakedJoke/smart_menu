@@ -1,75 +1,195 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState } from "react";
+import {
+  Button,
+  Image,
+  Platform,
+  StyleSheet,
+  TextInput,
+  View,
+  Alert,
+  Text,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import RenderHTML from "react-native-render-html";
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+const web = "http://localhost:8080/api/recommend";
+const mobil = "http://172.16.1.209:8080/api/recommend";
 
 export default function HomeScreen() {
+  const [loading, setLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<any>(null);
+  const [textInput, setTextInput] = useState("");
+  const [apiResponse, setApiResponse] = useState<string>(""); // API cevabı için state
+  const [showResponse, setShowResponse] = useState(false); // Response ekranı mı gösterilecek?
+
+  const pickImage = async () => {
+    const permissionResult =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert(
+        "İzin gerekli",
+        "Fotoğraf seçebilmek için izin vermelisiniz."
+      );
+      return;
+    }
+    const pickerResult = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images", // küçük harf
+      quality: 1,
+    });
+    console.log(pickerResult);
+
+    if (!pickerResult.canceled) {
+      const uri = pickerResult.assets?.[0]?.uri || null;
+      const imageFile = pickerResult.assets?.[0]?.file || null;
+      setSelectedFile(imageFile);
+      setSelectedImage(uri);
+    }
+  };
+
+  const sendDataToApi = async () => {
+    if (!selectedImage) {
+      Alert.alert("Hata", "Lütfen önce bir fotoğraf seçin.");
+      return;
+    }
+    setLoading(true); // istek başlamadan önce loading true
+
+    const formData = new FormData();
+
+    // Mobilde file yerine URI'den Blob oluştur
+    // Expo'da bunu yapmak için fetch + blob yöntemi kullanılır
+    const response = await fetch(selectedImage);
+    const blob = await response.blob();
+
+    if (selectedFile) {
+      formData.append("image", selectedFile);
+    } else {
+      formData.append("image", {
+        uri: selectedImage,
+        name: "photo.jpg", // Dosya ismi mobilde verilmeli
+        type: blob.type || "image/jpeg",
+      } as any);
+    }
+    // React Native FormData için bu yapı gerekli
+
+    formData.append("prompt", textInput);
+
+    try {
+      const apiResponse = await fetch(web, {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await apiResponse.json();
+
+      setApiResponse(json.message);
+      setShowResponse(true);
+
+      if (apiResponse.ok) {
+        Alert.alert("Başarılı", "Veriler başarıyla gönderildi!");
+        setSelectedImage(null);
+        setTextInput("");
+      } else {
+        Alert.alert("Hata", "API isteği başarısız oldu.");
+      }
+    } catch (error: any) {
+      setApiResponse("Bir hata oluştu: " + error.message);
+      setShowResponse(true);
+      Alert.alert("Hata", "Bir hata oluştu: " + error.message);
+    } finally {
+      setLoading(false); // istek bittiğinde loading false
+    }
+  };
+
+  // Geri dön butonu fonksiyonu
+  const handleBack = () => {
+    setApiResponse("");
+    setShowResponse(false);
+  };
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={{ marginTop: 10 }}>Yükleniyor...</Text>
+      </View>
+    );
+  }
+  if (showResponse) {
+    // Sadece response ekranı
+    return (
+      <View style={[styles.container, { justifyContent: "flex-start" }]}>
+        <Text style={styles.responseTitle}>API Response:</Text>
+        <ScrollView style={{ maxHeight: "80%", marginVertical: 10 }}>
+          <RenderHTML source={{ html: apiResponse }}></RenderHTML>
+        </ScrollView>
+        <Button title="Geri Dön" onPress={handleBack} />
+      </View>
+    );
+  }
+
+  // Normal ekran (inputlar vs.)
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Button title="Fotoğraf Seç" onPress={pickImage} />
+
+      {selectedImage && (
+        <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+      )}
+
+      <Text style={styles.label}>Sahip olduğunuz alerjen maddeleri yazın:</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Buraya yazınızı yazın"
+        value={textInput}
+        onChangeText={setTextInput}
+      />
+
+      <Button title="Gönder" onPress={sendDataToApi} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flexGrow: 1,
+    padding: 20,
+    justifyContent: "center",
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  imagePreview: {
+    width: 300,
+    height: 300,
+    marginVertical: 20,
+    alignSelf: "center",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    padding: 10,
+    marginVertical: 10,
+    borderRadius: 5,
   },
+  responseTitle: {
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  responseText: {
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    backgroundColor: "#f0f0f0",
+    padding: 10,
+    borderRadius: 5,
+  },
+  label: {
+  fontWeight: "bold",
+  marginBottom: 2,
+  fontSize: 16,
+  color: "#333",
+  paddingTop: 15
+},
 });
